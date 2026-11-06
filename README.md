@@ -150,6 +150,23 @@ After deployment, set the backend `FRONTEND_ORIGIN` to the exact deployed
 frontend URL and set the frontend `VITE_API_BASE_URL` to the exact deployed
 backend URL. Rebuild the frontend after changing `VITE_API_BASE_URL`.
 
+For the current deployments, use these values:
+
+```dotenv
+# Render backend environment
+FRONTEND_ORIGIN=https://ai-interviewer-flame-alpha.vercel.app
+
+# Vercel frontend environment
+VITE_API_BASE_URL=https://ai-interviewer-xwcc.onrender.com
+```
+
+Do not use the Vercel project dashboard URL
+(`https://vercel.com/...`) as `FRONTEND_ORIGIN`; it is not the browser origin
+of the deployed application. Also omit the trailing slash. After changing
+either setting, redeploy the affected service. If Render logs
+`Origin is not allowed by CORS`, compare the browser's application URL exactly
+with `FRONTEND_ORIGIN`, including protocol and subdomain.
+
 ## Verification before pushing or deploying
 
 Run the checks from the corresponding directories:
