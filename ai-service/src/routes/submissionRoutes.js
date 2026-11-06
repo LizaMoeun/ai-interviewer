@@ -3,6 +3,9 @@ const router = express.Router();
 
 const { submitCode } = require("../controllers/submissionController");
 const { validateRequest } = require("../utils/validateRequest");
+const { requireAuth } = require("../middleware/auth");
+
+router.use(requireAuth);
 
 /**
  * @swagger

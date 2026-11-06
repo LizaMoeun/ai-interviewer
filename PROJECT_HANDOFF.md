@@ -304,7 +304,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`.
+Open `http://localhost:4000`.
 
 ### Manual acceptance path
 
@@ -328,6 +328,46 @@ npx jest tests/smoke.test.js --runInBand
 ```
 
 ## Final status
+
+## Backend persistence update
+
+The backend now supports MongoDB-backed users and interviews with JWT
+authentication. Authentication endpoints are available at `/api/auth/register`,
+`/api/auth/login`, and `/api/auth/me`. AI, code-submission, and interview
+endpoints require a valid bearer token.
+
+Create the first administrator with `npm run create-admin` after setting
+`ADMIN_EMAIL` and a temporary `ADMIN_PASSWORD` of at least 12 characters in the
+backend environment. The password is hashed before storage and is never
+written to source code.
+
+Interview questions, candidate assignment by email, session progress, and final
+reports are persisted through `/api/interviews`. Configure `MONGODB_URI`,
+`JWT_SECRET`, `JWT_EXPIRES_IN`, and `FRONTEND_ORIGIN` in the backend environment
+before starting the server. Existing browser `localStorage` data is not
+automatically migrated; the new frontend creates and loads data through the
+backend after authentication.
+
+The backend listens on port `5000` and the Vite frontend listens on port `4000`
+by default. The backend can be built and run with
+[`ai-service/Dockerfile`](./ai-service/Dockerfile); see
+[`ai-service/README.md`](./ai-service/README.md) for the production container
+command. `FRONTEND_ORIGIN` must contain the exact deployed frontend origin in
+production; multiple origins may be supplied as a comma-separated allowlist.
+
+Candidate and recruiter reports are stored separately. Candidate API responses
+never include recruiter recommendations or recommendation justification, while
+recruiter/admin responses receive the recruiter report.
+
+Candidate registration now sends a real SMTP verification email. Candidate
+login is rejected until the one-time link is opened. Candidates also have a
+separate `/candidate/practice` lab for generating questions, answering quiz
+questions, receiving feedback, and running code without an assigned interview.
+
+Administrators can deactivate or delete recruiter and candidate accounts from
+the user management screen. Passwords are never displayed or retrievable;
+only bcrypt password hashes are stored. Deleting a recruiter removes their
+interviews, while deleting a candidate clears their interview assignments.
 
 **Integration status:** Main frontend, backend, and AI-service flows are
 connected; all seven AI capabilities are wired to their corresponding

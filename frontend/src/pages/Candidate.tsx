@@ -14,23 +14,16 @@ import {
   PageHeader,
   SectionTitle,
 } from "../components/ui"
-import { getInterviews, getSession, type SavedInterview } from "../lib/storage"
+import { fetchInterviews, type SavedInterview } from "../lib/storage"
 
 export default function CandidateDashboard() {
   const { user } = useAuth()
   const [interviews, setInterviews] = useState<SavedInterview[]>([])
 
   useEffect(() => {
-    const session = getSession()
-    setInterviews(
-      getInterviews().map((interview, index) =>
-        index === 0 && session.completed
-          ? { ...interview, status: "Completed" }
-          : index === 0 && Object.keys(session.answers).length
-            ? { ...interview, status: "In progress" }
-            : interview,
-      ),
-    )
+    void fetchInterviews()
+      .then(setInterviews)
+      .catch(() => setInterviews([]))
   }, [])
 
   const active = interviews.filter((item) => item.status !== "Completed")

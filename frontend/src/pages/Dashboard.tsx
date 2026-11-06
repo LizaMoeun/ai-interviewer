@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router"
 import {
   ArrowRight,
@@ -9,16 +9,10 @@ import {
   MoreHorizontal,
   Plus,
   Target,
-  TrendingUp,
   UserCheck,
   Users,
 } from "lucide-react"
-import { 
-  approveRecruiter, 
-  getRegistrations, 
-  rejectRecruiter,
-  useAuth 
-} from "../app/auth"
+import { useAuth } from "../app/auth"
 import {
   Badge,
   Button,
@@ -28,65 +22,30 @@ import {
   SectionTitle,
 } from "../components/ui"
 import { ScoreBadge } from "../components/Feedback"
-import { getInterviews } from "../lib/storage"
+import { fetchInterviews, type SavedInterview } from "../lib/storage"
+import { apiPatch, apiRequest } from "../lib/api"
 
-const candidates = [
-  {
-    name: "Alex Chen",
-    role: "Backend Developer",
-    status: "Completed",
-    score: 86,
-    date: "Apr 18",
-  },
-  {
-    name: "Jordan Lee",
-    role: "Backend Developer",
-    status: "Completed",
-    score: 78,
-    date: "Apr 17",
-  },
-  {
-    name: "Sam Rivera",
-    role: "Frontend Engineer",
-    status: "In progress",
-    score: null,
-    date: "Apr 17",
-  },
-  {
-    name: "Priya Shah",
-    role: "Product Engineer",
-    status: "Invited",
-    score: null,
-    date: "Apr 16",
-  },
-]
+type CandidateRow = {
+  id: string
+  name: string
+  role: string
+  status: SavedInterview["status"]
+  score: number | null
+  date: string
+}
 
-const users = [
-  {
-    name: "Morgan Ellis",
-    email: "morgan@acme.co",
-    role: "Recruiter",
-    status: "Active",
-  },
-  {
-    name: "Alex Chen",
-    email: "alex@example.com",
-    role: "Candidate",
-    status: "Active",
-  },
-  {
-    name: "Taylor Reed",
-    email: "taylor@acme.co",
-    role: "Administrator",
-    status: "Active",
-  },
-  {
-    name: "Jamie Kim",
-    email: "jamie@example.com",
-    role: "Candidate",
-    status: "Deactivated",
-  },
-]
+function candidateRows(interviews: SavedInterview[]): CandidateRow[] {
+  return interviews.map((interview) => ({
+    id: interview.id,
+    name: interview.candidateName || "Unassigned candidate",
+    role: interview.role,
+    status: interview.status,
+    score: typeof (interview.report as { overall_score?: unknown } | null)?.overall_score === "number"
+      ? (interview.report as { overall_score: number }).overall_score
+      : null,
+    date: new Date().toLocaleDateString(),
+  }))
+}
 
 export default function DashboardPage() {
   const { user } = useAuth()
@@ -106,7 +65,10 @@ export default function DashboardPage() {
 }
 
 function RecruiterOverview({ name }: { name: string }) {
-  const interviewCount = getInterviews().length
+  const [interviews, setInterviews] = useState<SavedInterview[]>([])
+  useEffect(() => { void fetchInterviews().then(setInterviews) }, [])
+  const completed = interviews.filter((item) => item.status === "Completed").length
+  const reports = interviews.filter((item) => item.report).length
   return (
     <>
       <PageHeader
@@ -123,26 +85,26 @@ function RecruiterOverview({ name }: { name: string }) {
         <StatCard
           icon={BriefcaseBusiness}
           label="Active interviews"
-          value={String(interviewCount + 5)}
-          detail="+2 this week"
+          value={String(interviews.filter((item) => item.status !== "Completed").length)}
+          detail="not completed"
         />
         <StatCard
           icon={Users}
           label="Candidates"
-          value="24"
-          detail="8 awaiting review"
+          value={String(interviews.filter((item) => item.candidateId).length)}
+          detail="assigned interviews"
         />
         <StatCard
           icon={CheckCircle2}
           label="Completion rate"
-          value="82%"
-          detail="+6% this month"
+          value={interviews.length ? `${Math.round((completed / interviews.length) * 100)}%` : "—"}
+          detail="completion rate"
         />
         <StatCard
           icon={UserCheck}
           label="Recommended"
-          value="7"
-          detail="Across 16 completed"
+          value={String(reports)}
+          detail="reports available"
         />
       </div>
       <div className="dashboard-grid">
@@ -164,25 +126,10 @@ function RecruiterOverview({ name }: { name: string }) {
             description="Progress this week."
           />
           <div className="progress-list">
-            {[
-              ["Backend Developer", 12, 18],
-              ["Frontend Engineer", 7, 12],
-              ["Product Engineer", 4, 10],
-            ].map(([label, done, total]) => (
-              <div key={label}>
-                <div className="progress-label">
-                  <strong>{label}</strong>
-                  <span>
-                    {done}/{total}
-                  </span>
-                </div>
-                <div className="progress-track">
-                  <span
-                    style={{
-                      width: `${(Number(done) / Number(total)) * 100}%`,
-                    }}
-                  />
-                </div>
+            {interviews.slice(0, 5).map((interview) => (
+              <div key={interview.id}>
+                <div className="progress-label"><strong>{interview.role}</strong><span>{interview.status}</span></div>
+                <div className="progress-track"><span style={{ width: interview.status === "Completed" ? "100%" : interview.status === "In progress" ? "50%" : "0%" }} /></div>
               </div>
             ))}
           </div>
@@ -218,7 +165,13 @@ function StatCard({
 }
 
 function CandidateTable({ compact = false }: { compact?: boolean }) {
-  const rows = compact ? candidates.slice(0, 4) : candidates
+  const [rows, setRows] = useState<CandidateRow[]>([])
+  useEffect(() => {
+    void fetchInterviews().then((items) => {
+      const next = candidateRows(items)
+      setRows(compact ? next.slice(0, 4) : next)
+    })
+  }, [compact])
   return (
     <div className="table-wrap">
       <table className="table">
@@ -234,7 +187,7 @@ function CandidateTable({ compact = false }: { compact?: boolean }) {
         </thead>
         <tbody>
           {rows.map((candidate) => (
-            <tr key={candidate.name}>
+            <tr key={candidate.id}>
               <td>
                 <div className="person-cell">
                   <span className="table-avatar">
@@ -285,14 +238,15 @@ function CandidateTable({ compact = false }: { compact?: boolean }) {
 }
 
 function CandidateList() {
-  const [selected, setSelected] = useState<string[]>([
-    "Alex Chen",
-    "Jordan Lee",
-  ])
+  const [rows, setRows] = useState<CandidateRow[]>([])
+  const [selected, setSelected] = useState<string[]>([])
+  useEffect(() => {
+    void fetchInterviews().then((items) => setRows(candidateRows(items)))
+  }, [])
   const comparable = useMemo(
     () =>
-      candidates.filter((item) => selected.includes(item.name) && item.score),
-    [selected],
+      rows.filter((item) => selected.includes(item.id) && item.score),
+    [rows, selected],
   )
   return (
     <>
@@ -318,19 +272,19 @@ function CandidateList() {
               </tr>
             </thead>
             <tbody>
-              {candidates.map((candidate) => (
-                <tr key={candidate.name}>
+              {rows.map((candidate) => (
+                <tr key={candidate.id}>
                   <td>
                     <input
                       aria-label={`Compare ${candidate.name}`}
                       type="checkbox"
                       disabled={!candidate.score}
-                      checked={selected.includes(candidate.name)}
+                      checked={selected.includes(candidate.id)}
                       onChange={(event) =>
                         setSelected((current) =>
                           event.target.checked
-                            ? [...current, candidate.name]
-                            : current.filter((name) => name !== candidate.name),
+                            ? [...current, candidate.id]
+                            : current.filter((id) => id !== candidate.id),
                         )
                       }
                     />
@@ -366,7 +320,7 @@ function CandidateList() {
           />
           <div className="compare-grid">
             {comparable.map((candidate) => (
-              <div className="compare-card" key={candidate.name}>
+              <div className="compare-card" key={candidate.id}>
                 <div>
                   <strong>{candidate.name}</strong>
                   <p className="muted">{candidate.role}</p>
@@ -382,6 +336,15 @@ function CandidateList() {
 }
 
 function AdminOverview() {
+  const [interviews, setInterviews] = useState<SavedInterview[]>([])
+  const [userCount, setUserCount] = useState(0)
+  useEffect(() => {
+    void Promise.all([
+      fetchInterviews().then(setInterviews),
+      apiRequest<unknown[]>("/api/auth/users").then((users) => setUserCount(users.length)),
+    ])
+  }, [])
+  const completed = interviews.filter((item) => item.status === "Completed").length
   return (
     <>
       <PageHeader
@@ -393,26 +356,26 @@ function AdminOverview() {
         <StatCard
           icon={Users}
           label="Total users"
-          value="1,248"
-          detail="+38 this month"
+          value={String(userCount)}
+          detail="registered users"
         />
         <StatCard
           icon={CalendarClock}
           label="Active sessions"
-          value="18"
-          detail="4 started today"
+          value={String(interviews.filter((item) => item.status === "In progress").length)}
+          detail="in progress"
         />
         <StatCard
           icon={CheckCircle2}
           label="Completed today"
-          value="42"
-          detail="98.6% success rate"
+          value={String(completed)}
+          detail="completed interviews"
         />
         <StatCard
           icon={BriefcaseBusiness}
           label="Hiring teams"
-          value="36"
-          detail="+3 this month"
+          value={String(new Set(interviews.map((item) => item.recruiterId)).size)}
+          detail="recruiters with interviews"
         />
       </div>
       <div className="dashboard-grid">
@@ -421,35 +384,7 @@ function AdminOverview() {
             title="Recent platform activity"
             description="Latest user and interview events."
           />
-          <div className="activity-list">
-            {[
-              [
-                "Interview completed",
-                "Alex Chen · Backend Developer",
-                "2 min ago",
-              ],
-              [
-                "New recruiter account",
-                "Morgan Ellis · Acme Inc.",
-                "18 min ago",
-              ],
-              [
-                "Interview started",
-                "Sam Rivera · Frontend Engineer",
-                "24 min ago",
-              ],
-              ["User deactivated", "Jamie Kim · Candidate", "1 hr ago"],
-            ].map(([title, detail, time]) => (
-              <div key={detail}>
-                <span className="activity-dot" />
-                <div>
-                  <strong>{title}</strong>
-                  <p>{detail}</p>
-                </div>
-                <span>{time}</span>
-              </div>
-            ))}
-          </div>
+          <CandidateTable />
         </Card>
         <Card>
           <SectionTitle
@@ -477,25 +412,62 @@ function AdminOverview() {
 }
 
 function AdminUsers() {
-  const [, setRevision] = useState(0)
-  const managedUsers = [
-    ...getRegistrations().map((registration) => ({
-      ...registration,
-      role: registration.role === "recruiter" ? "Recruiter" : "Candidate",
-    })),
-    ...users.filter(
-      (user) =>
-        !getRegistrations().some(
-          (registration) => registration.email === user.email,
-        ),
-    ),
-  ]
-  const [states, setStates] = useState<Record<string, string>>(
-    Object.fromEntries(managedUsers.map((user) => [user.email, user.status])),
-  )
+  type AdminUser = {
+    id: string
+    name: string
+    email: string
+    role: "candidate" | "recruiter" | "admin"
+    status: "Active" | "Pending admin approval" | "Rejected"
+  }
+  const [managedUsers, setManagedUsers] = useState<AdminUser[]>([])
+  const [error, setError] = useState("")
 
-  function statusFor(email: string, initialStatus: string) {
-    return states[email] || initialStatus
+  useEffect(() => {
+    void apiRequest<AdminUser[]>("/api/auth/users")
+      .then(setManagedUsers)
+      .catch((requestError) => {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load users.",
+        )
+      })
+  }, [])
+
+  async function changeStatus(user: AdminUser, status: AdminUser["status"]) {
+    setError("")
+    try {
+      const updated = await apiPatch<AdminUser>(
+        `/api/auth/users/${user.id}/status`,
+        { status },
+      )
+      setManagedUsers((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      )
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to update the user.",
+      )
+    }
+  }
+
+  async function deleteUser(user: AdminUser) {
+    if (!window.confirm(`Delete ${user.name}'s account? This cannot be undone.`)) {
+      return
+    }
+    setError("")
+    try {
+      await apiRequest(`/api/auth/users/${user.id}`, { method: "DELETE" })
+      setManagedUsers((current) => current.filter((item) => item.id !== user.id))
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to delete the user.",
+      )
+    }
   }
 
   return (
@@ -504,6 +476,7 @@ function AdminUsers() {
         title="User accounts"
         description="Approve recruiter registrations and manage access across the platform."
       />
+      {error && <div className="form-error">{error}</div>}
       <Card>
         <div className="table-wrap">
           <table className="table">
@@ -522,78 +495,67 @@ function AdminUsers() {
                     <strong>{user.name}</strong>
                     <span className="cell-subtitle">{user.email}</span>
                   </td>
-                  <td>{user.role}</td>
+                  <td>
+                    {user.role === "admin"
+                      ? "Administrator"
+                      : user.role === "recruiter"
+                        ? "Recruiter"
+                        : "Candidate"}
+                  </td>
                   <td>
                     <Badge
                       tone={
-                        statusFor(user.email, user.status) === "Active"
+                        user.status === "Active"
                           ? "green"
-                          : statusFor(user.email, user.status).includes(
-                                "Pending",
-                              )
+                          : user.status.includes("Pending")
                             ? "amber"
-                            : statusFor(user.email, user.status) === "Rejected"
+                            : user.status === "Rejected"
                             ? "red"  
                             : "neutral"
                       }
                     >
-                      {statusFor(user.email, user.status)}
+                      {user.status}
                     </Badge>
                   </td>
                   <td>
-                    {statusFor(user.email, user.status) ===
-                    "Pending admin approval" ? (
+                    {user.status === "Pending admin approval" ? (
                       <div className="action-group">
                         <Button
                           variant="primary"
                           className="approve-button"
-                          onClick={() => {
-                            approveRecruiter(user.email)
-                            setStates((current) => ({
-                              ...current,
-                              [user.email]: "Active",
-                            }))
-                            setRevision((current) => current + 1)
-                          }}
+                          onClick={() => void changeStatus(user, "Active")}
                         >
                           Approve
                         </Button>
                         <Button
                           variant="secondary"
-                          onClick={() => {
-                            rejectRecruiter(user.email)
-                            setStates((current) => ({
-                              ...current,
-                              [user.email]: "Rejected",
-                            }))
-                            setRevision((current) => current + 1)
-                          }}
+                          onClick={() => void changeStatus(user, "Rejected")}
                         >
                           Reject
                         </Button>
                       </div>
-                    ) : statusFor(user.email, user.status) ===
-                      "Pending email verification" ? (
-                      <Button variant="secondary" disabled>
-                        Awaiting verification
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        onClick={() =>
-                          setStates((current) => ({
-                            ...current,
-                            [user.email]:
-                              statusFor(user.email, user.status) === "Active"
-                                ? "Deactivated"
-                                : "Active",
-                          }))
-                        }
-                      >
-                        {statusFor(user.email, user.status) === "Active"
-                          ? "Deactivate"
-                          : "Reactivate"}
-                      </Button>
+                    ) : user.role === "admin" ? null : (
+                      <div className="action-group">
+                        <Button
+                          variant="secondary"
+                          onClick={() =>
+                            void changeStatus(
+                              user,
+                              user.status === "Active" ? "Rejected" : "Active",
+                            )
+                          }
+                        >
+                          {user.status === "Active"
+                            ? "Deactivate"
+                            : "Reactivate"}
+                        </Button>
+                        <Button
+                          variant="danger"
+                          onClick={() => void deleteUser(user)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -607,6 +569,8 @@ function AdminUsers() {
 }
 
 function AdminSessions() {
+  const [interviews, setInterviews] = useState<SavedInterview[]>([])
+  useEffect(() => { void fetchInterviews().then(setInterviews) }, [])
   return (
     <>
       <PageHeader
@@ -625,54 +589,15 @@ function AdminSessions() {
                 <th>Started</th>
               </tr>
             </thead>
-            <tbody>
-              {[
-                [
-                  "Sam Rivera",
-                  "Frontend Engineer",
-                  "Northstar Labs",
-                  "In progress",
-                  "32 min ago",
-                ],
-                [
-                  "Alex Chen",
-                  "Backend Developer",
-                  "Acme Inc.",
-                  "Completed",
-                  "1 hr ago",
-                ],
-                [
-                  "Priya Shah",
-                  "Product Engineer",
-                  "Vertex",
-                  "In progress",
-                  "1 hr ago",
-                ],
-                [
-                  "Jordan Lee",
-                  "Backend Developer",
-                  "Acme Inc.",
-                  "Completed",
-                  "Yesterday",
-                ],
-              ].map((row) => (
-                <tr key={row[0]}>
-                  {row.map((cell, index) => (
-                    <td key={cell}>
-                      {index === 0 ? (
-                        <strong>{cell}</strong>
-                      ) : index === 3 ? (
-                        <Badge tone={cell === "Completed" ? "green" : "blue"}>
-                          {cell}
-                        </Badge>
-                      ) : (
-                        cell
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
+            <tbody>{interviews.map((interview) => (
+              <tr key={interview.id}>
+                <td><strong>{interview.candidateName || "Unassigned candidate"}</strong></td>
+                <td>{interview.role}</td>
+                <td>—</td>
+                <td><Badge tone={interview.status === "Completed" ? "green" : "blue"}>{interview.status}</Badge></td>
+                <td>{interview.due}</td>
+              </tr>
+            ))}</tbody>
           </table>
         </div>
       </Card>
@@ -680,31 +605,15 @@ function AdminSessions() {
   )
 }
 
-const interviewTrend = [
-  { month: "Nov", value: 42 },
-  { month: "Dec", value: 51 },
-  { month: "Jan", value: 48 },
-  { month: "Feb", value: 67 },
-  { month: "Mar", value: 74 },
-  { month: "Apr", value: 86 },
-]
-
-const scoreDistribution = [
-  { range: "90–100", label: "Excellent", count: 12, width: 32 },
-  { range: "80–89", label: "Strong", count: 28, width: 74 },
-  { range: "70–79", label: "Good", count: 38, width: 100 },
-  { range: "60–69", label: "Developing", count: 21, width: 55 },
-  { range: "Below 60", label: "Needs improvement", count: 9, width: 24 },
-]
-
-const recommendations = [
-  { label: "Strong Hire", count: 18, tone: "green" as const },
-  { label: "Hire", count: 34, tone: "green" as const },
-  { label: "Lean Hire", count: 27, tone: "amber" as const },
-  { label: "No Hire", count: 21, tone: "red" as const },
-]
-
 function HiringAnalytics({ admin }: { admin: boolean }) {
+  const [interviews, setInterviews] = useState<SavedInterview[]>([])
+  useEffect(() => { void fetchInterviews().then(setInterviews) }, [])
+  const completed = interviews.filter((item) => item.status === "Completed")
+  const scores = completed
+    .map((item) => (item.report as { overall_score?: unknown } | null)?.overall_score)
+    .filter((score): score is number => typeof score === "number")
+  const average = scores.length ? (scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(1) : "—"
+  const completionRate = interviews.length ? `${Math.round((completed.length / interviews.length) * 100)}%` : "—"
   return (
     <>
       <PageHeader
@@ -715,135 +624,34 @@ function HiringAnalytics({ admin }: { admin: boolean }) {
             : "Trends across interviews, candidates, and hiring decisions."
         }
       />
-      <div className="analytics-preview-note">
-        <span className="status-dot neutral" />
-        <p>
-          <strong>Preview data</strong> · This dashboard is ready for backend
-          integration. Values currently demonstrate the final reporting
-          experience.
-        </p>
-      </div>
-
       <div className="stat-grid">
         <StatCard
           icon={BriefcaseBusiness}
           label={admin ? "Platform interviews" : "Total interviews"}
-          value={admin ? "1,284" : "368"}
-          detail="+18% this quarter"
+          value={String(interviews.length)}
+          detail="from persisted interviews"
         />
         <StatCard
           icon={CheckCircle2}
           label="Completion rate"
-          value="84%"
-          detail="+5% this quarter"
+          value={completionRate}
+          detail="completed interviews"
         />
         <StatCard
           icon={Target}
           label="Average score"
-          value="74.6"
-          detail="+2.4 points"
+          value={average}
+          detail="completed report average"
         />
         <StatCard
           icon={Clock3}
           label="Average duration"
-          value="41m"
-          detail="−6 min this quarter"
+          value="—"
+          detail="not tracked"
         />
       </div>
 
-      <div className="analytics-grid">
-        <Card className="analytics-wide">
-          <SectionTitle
-            title="Interview volume"
-            description="Completed technical interviews over the last six months."
-            action={
-              <div className="analytics-change">
-                <TrendingUp size={15} /> 18%
-              </div>
-            }
-          />
-          <div className="bar-chart" aria-label="Interview volume chart">
-            {interviewTrend.map((item) => (
-              <div className="bar-column" key={item.month}>
-                <span className="bar-value">{item.value}</span>
-                <div className="bar-track">
-                  <span style={{ height: `${item.value}%` }} />
-                </div>
-                <span className="bar-label">{item.month}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card>
-          <SectionTitle
-            title="Hiring recommendations"
-            description="Final AI recommendations."
-          />
-          <div className="recommendation-list">
-            {recommendations.map((item) => (
-              <div key={item.label}>
-                <div className="recommendation-label">
-                  <Badge tone={item.tone}>{item.label}</Badge>
-                  <strong>{item.count}%</strong>
-                </div>
-                <div className="progress-track">
-                  <span
-                    className={`recommendation-bar ${item.tone}`}
-                    style={{ width: `${item.count}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="analytics-wide">
-          <SectionTitle
-            title="Score distribution"
-            description="Candidate performance across completed interviews."
-          />
-          <div className="distribution-list">
-            {scoreDistribution.map((item) => (
-              <div className="distribution-row" key={item.range}>
-                <div className="distribution-name">
-                  <strong>{item.range}</strong>
-                  <span>{item.label}</span>
-                </div>
-                <div className="distribution-track">
-                  <span style={{ width: `${item.width}%` }} />
-                </div>
-                <strong className="distribution-count">{item.count}</strong>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card>
-          <SectionTitle
-            title="Interview funnel"
-            description="Candidate progress this quarter."
-          />
-          <div className="funnel-list">
-            {[
-              ["Invited", 142, "100%"],
-              ["Started", 126, "89%"],
-              ["Completed", 119, "84%"],
-              ["Recommended", 62, "44%"],
-            ].map(([label, count, percent]) => (
-              <div key={label}>
-                <div>
-                  <span>{label}</span>
-                  <strong>{count}</strong>
-                </div>
-                <Badge tone={label === "Recommended" ? "green" : "neutral"}>
-                  {percent}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
+      <Card><SectionTitle title="Persisted interview activity" description="Only interviews and reports stored by the backend are shown here." /><CandidateTable /></Card>
     </>
   )
 }

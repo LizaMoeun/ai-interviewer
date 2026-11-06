@@ -27,6 +27,12 @@ const RegistrationStatusPage = lazy(() =>
   })),
 )
 
+const VerifyEmailPage = lazy(() =>
+  import("./Auth").then((module) => ({
+    default: module.VerifyEmailPage,
+  })),
+)
+
 const DashboardPage = lazy(() => import("./Dashboard"))
 
 const CreateInterviewPage = lazy(() =>
@@ -44,6 +50,7 @@ const InterviewSessionPage = lazy(() =>
 const ResultsPage = lazy(() =>
   import("./Results")
 )
+const PracticePage = lazy(() => import("./Practice"))
 
 export const router = createBrowserRouter([
   {
@@ -55,6 +62,10 @@ export const router = createBrowserRouter([
       {
         path: "registration-status",
         Component: RegistrationStatusPage,
+      },
+      {
+        path: "verify-email",
+        Component: VerifyEmailPage,
       },
     ],
   },
@@ -84,6 +95,10 @@ export const router = createBrowserRouter([
       {
         path: "candidate/results",
         Component: ResultsPage,
+      },
+      {
+        path: "candidate/practice",
+        Component: PracticePage,
       },
     ],
   },

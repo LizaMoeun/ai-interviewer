@@ -3,7 +3,12 @@ import { ArrowLeft, Award, CheckCircle2, Lightbulb, Target } from "lucide-react"
 import { Link, useLocation } from "react-router"
 import { useAuth } from "../app/auth"
 import { apiPost } from "../lib/api"
-import { getInterviews, getSession } from "../lib/storage"
+import {
+  fetchInterviews,
+  persistReport,
+  type SavedInterview,
+  type SessionState,
+} from "../lib/storage"
 import {
   Badge,
   Card,
@@ -22,51 +27,45 @@ type Report = {
   communication_evaluation: string
   strengths: string[]
   weaknesses: string[]
-  recommendation: "Strong Hire" | "Hire" | "Lean Hire" | "No Hire" | "Strong No Hire"
-  recommendation_justification: string
+  recommendation?: "Strong Hire" | "Hire" | "Lean Hire" | "No Hire" | "Strong No Hire"
+  recommendation_justification?: string
   summary: string
-}
-
-const previewReport: Report = {
-  candidate_name: "Alex Chen",
-  job_title: "Backend Developer",
-  overall_score: 86,
-  technical_evaluation:
-    "Demonstrated strong fundamentals in API design, data access, and pragmatic reliability trade-offs.",
-  communication_evaluation:
-    "Explanations were organized and concise, with helpful examples and clear reasoning.",
-  strengths: [
-    "Explains technical trade-offs clearly",
-    "Strong API and database fundamentals",
-    "Tests assumptions before choosing an approach",
-  ],
-  weaknesses: [
-    "Could discuss observability in more depth",
-    "Consider more edge cases before implementation",
-  ],
-  recommendation: "Strong Hire",
-  recommendation_justification:
-    "Strong technical foundation with clear communication and practical problem-solving.",
-  summary:
-    "You showed a strong understanding of backend engineering fundamentals and communicated your reasoning clearly. Your answers balanced correctness with practical trade-offs.",
 }
 
 export default function ResultsPage() {
   const { user } = useAuth()
   const location = useLocation()
   const candidateView = location.pathname.startsWith("/candidate")
-  const interview = getInterviews()[0]
-  const session = getSession()
+  const [interview, setInterview] = useState<SavedInterview | null>(null)
+  const [session, setSession] = useState<SessionState | null>(null)
   const [report, setReport] = useState<Report | null>(
-    session.completed ? null : previewReport,
+    null,
   )
-  const [loading, setLoading] = useState(session.completed)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const requested = useRef(false)
 
+  useEffect(() => {
+    void fetchInterviews()
+      .then((items) => {
+        const next = items[0]
+        setInterview(next || null)
+        setSession(next?.session || null)
+      })
+      .catch((requestError) => {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load the interview.",
+        )
+        setLoading(false)
+      })
+  }, [])
+
   async function generate() {
+    if (!interview || !session) return
     if (!session.completed) {
-      setReport(previewReport)
+      setError("Complete the interview before viewing a report.")
       setLoading(false)
       return
     }
@@ -102,6 +101,7 @@ export default function ResultsPage() {
         })),
       })
       setReport(result)
+      await persistReport(interview.id, result)
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -114,11 +114,11 @@ export default function ResultsPage() {
   }
 
   useEffect(() => {
-    if (session.completed && !requested.current) {
+    if (session?.completed && !requested.current) {
       requested.current = true
       void generate()
     }
-  }, [])
+  }, [session])
 
   if (loading) {
     return (
@@ -138,9 +138,9 @@ export default function ResultsPage() {
         <ErrorState message={error} retry={generate} />
       </div>
     )
-  if (!report) return null
+  if (!report || !interview || !session) return null
 
-  const recommendationTone = report.recommendation.includes("No")
+  const recommendationTone = report.recommendation?.includes("No")
     ? "red"
     : report.recommendation === "Lean Hire"
       ? "amber"

@@ -11,13 +11,14 @@ import {
 import { useNavigate } from "react-router"
 import { apiPost } from "../lib/api"
 import {
-  getInterviews,
+  fetchInterviews,
+  persistSession,
   getSession,
-  saveSession,
   type CodeEvaluation,
   type Feedback,
   type InterviewQuestion,
   type SessionState,
+  type SavedInterview,
 } from "../lib/storage"
 import {
   Badge,
@@ -41,8 +42,7 @@ const starterCode = {
 
 export default function InterviewSessionPage() {
   const navigate = useNavigate()
-  const interview = getInterviews()[0]
-  const questions = interview.questions
+  const [interview, setInterview] = useState<SavedInterview | null>(null)
   const [session, setSession] = useState<SessionState>(getSession)
   const [answer, setAnswer] = useState("")
   const [language, setLanguage] = useState<"JavaScript" | "Python">(
@@ -54,35 +54,51 @@ export default function InterviewSessionPage() {
   )
   const [error, setError] = useState("")
 
+  useEffect(() => {
+    void fetchInterviews()
+      .then((items) => {
+        const next = items[0] || null
+        setInterview(next)
+        if (next?.session) setSession(next.session)
+      })
+      .catch(() => setError("Unable to load your interview."))
+  }, [])
+
+  useEffect(() => {
+    if (interview) void persistSession(interview.id, session)
+  }, [interview, session])
+
+  const questions = interview?.questions || []
   const question = questions[session.current] || questions[questions.length - 1]
-  const followUpQuestion = session.followUps[question.id]
+  const followUpQuestion = question ? session.followUps[question.id] : undefined
   const answeringFollowUp = Boolean(followUpQuestion && !session.followUpFeedback[question.id])
-  const displayedQuestion = answeringFollowUp
+  const displayedQuestion = question && answeringFollowUp
     ? { ...question, question_text: followUpQuestion }
     : question
-  const answerKey = answeringFollowUp
+  const answerKey = question && answeringFollowUp
     ? `${question.id}:follow-up`
-    : question.id
+    : question?.id
   const progress = Math.min(
-    ((session.current + 1) / questions.length) * 100,
+    questions.length ? ((session.current + 1) / questions.length) * 100 : 0,
     100,
   )
-  const existingFeedback = answeringFollowUp
+  const existingFeedback = question && answeringFollowUp
     ? session.followUpFeedback[question.id]
-    : session.feedback[question.id]
-  const existingCodeResult = session.codeEvaluations[question.id]
+    : question ? session.feedback[question.id] : undefined
+  const existingCodeResult = question ? session.codeEvaluations[question.id] : undefined
 
   useEffect(() => {
-    saveSession(session)
-  }, [session])
-
-  useEffect(() => {
+    if (!question) return
     setAnswer(
       answeringFollowUp
         ? session.followUpAnswers[question.id] || ""
         : session.answers[question.id] || "",
     )
-  }, [answerKey, answeringFollowUp, question.id, session.answers, session.followUpAnswers])
+  }, [answerKey, answeringFollowUp, question?.id, session.answers, session.followUpAnswers])
+
+  if (!interview || !question || !displayedQuestion) {
+    return <div className="session-page"><Skeleton rows={4} /></div>
+  }
 
   async function submitText() {
     if (!answer.trim()) return

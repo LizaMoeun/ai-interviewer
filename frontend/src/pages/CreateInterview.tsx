@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react"
 import { ArrowLeft, GripVertical, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useNavigate } from "react-router"
 import { apiPost } from "../lib/api"
-import { saveInterview, type InterviewQuestion } from "../lib/storage"
+import { createInterview, type InterviewQuestion } from "../lib/storage"
 import {
   Badge,
   Button,
@@ -114,10 +114,10 @@ export default function CreateInterviewPage() {
     ])
   }
 
-  function save() {
+  async function save() {
     const jobTitleElement = lastForm?.elements.namedItem("jobTitle")
-    saveInterview({
-      id: `int-${Date.now()}`,
+    try {
+      await createInterview({
       title: `${
         jobTitleElement instanceof HTMLInputElement
           ? jobTitleElement.value
@@ -127,11 +127,20 @@ export default function CreateInterviewPage() {
         jobTitleElement instanceof HTMLInputElement
           ? jobTitleElement.value
           : "Technical role",
-      status: "Not started",
       due: "Invitation ready to send",
+      candidateEmail:
+        String(lastForm?.elements.namedItem("candidateEmail")?.value || "").trim() ||
+        undefined,
       questions,
-    })
-    navigate("/dashboard")
+      })
+      navigate("/dashboard")
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to save the interview.",
+      )
+    }
   }
 
   return (
@@ -166,6 +175,13 @@ export default function CreateInterviewPage() {
                 </Select>
               </Field>
             </div>
+            <Field label="Candidate email" hint="Optional. The candidate must already have an account.">
+              <Input
+                name="candidateEmail"
+                type="email"
+                placeholder="candidate@example.com"
+              />
+            </Field>
           </Card>
           <Card>
             <SectionTitle

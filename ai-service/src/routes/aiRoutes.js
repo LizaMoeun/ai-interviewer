@@ -10,6 +10,9 @@ const {
     generateFinalReport,
 } = require("../controllers/aiController");
 const { validateRequest } = require("../utils/validateRequest");
+const { requireAuth } = require("../middleware/auth");
+
+router.use(requireAuth);
 
 /**
  * @swagger

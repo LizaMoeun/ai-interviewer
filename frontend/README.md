@@ -46,7 +46,7 @@ API requests use `VITE_API_BASE_URL`. Create a `.env.local` file in this
 directory when running against the backend:
 
 ```dotenv
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=http://localhost:5000
 ```
 
 Restart Vite after changing environment variables. The `VITE_` prefix is
@@ -144,12 +144,12 @@ Use the package script:
 npm run build
 ```
 
-### Port `5173` is already in use
+### Port `4000` is already in use
 
 Use another port:
 
 ```powershell
-$env:PORT=5174
+$env:PORT=4001
 npm run dev
 ```
 

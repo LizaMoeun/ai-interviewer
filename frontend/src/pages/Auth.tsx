@@ -1,5 +1,5 @@
-import { CheckCircle2, Clock3, MailCheck } from "lucide-react"
-import { useState, type FormEvent } from "react"
+import { Clock3, MailCheck } from "lucide-react"
+import { useEffect, useState, type FormEvent } from "react"
 import {
   Link,
   useNavigate,
@@ -8,9 +8,9 @@ import {
 
 import { AuthFrame } from "../components/layouts"
 import { Button, Card, Field, Input, Select } from "../components/ui"
+import { apiRequest } from "../lib/api"
 import {
   useAuth,
-  verifyCandidate,
   type Role,
 } from "../app/auth"
 
@@ -46,8 +46,15 @@ export function LoginPage() {
 
     window.setTimeout(() => {
       try {
-        login(email, role)
-        navigate(destination(role))
+        void login(email, password).then((nextUser) => {
+          navigate(destination(nextUser.role))
+        }).catch((loginError) => {
+          setError(
+            loginError instanceof Error
+              ? loginError.message
+              : "Unable to sign in.",
+          )
+        }).finally(() => setLoading(false))
       } catch (loginError) {
         setError(
           loginError instanceof Error
@@ -55,7 +62,6 @@ export function LoginPage() {
             : "Unable to sign in.",
         )
 
-        setLoading(false)
       }
     }, 350)
   }
@@ -116,8 +122,7 @@ export function LoginPage() {
         </p>
 
         <p className="auth-disclosure">
-          Authentication endpoints are not yet available. This
-          preview stores your workspace role only in this browser.
+          Your account is securely authenticated by the InterviewAI backend.
         </p>
       </form>
     </AuthFrame>
@@ -154,11 +159,18 @@ export function RegisterPage() {
       return
     }
 
-    register(name, email, role)
-
-    navigate(
-      `/registration-status?type=${role}&email=${encodeURIComponent(email)}`,
-    )
+    setError("")
+    void register(name, email, password, role)
+      .then(() => {
+        navigate(`/registration-status?type=${role}&email=${encodeURIComponent(email)}`)
+      })
+      .catch((registerError) => {
+        setError(
+          registerError instanceof Error
+            ? registerError.message
+            : "Unable to create your account.",
+        )
+      })
   }
 
   return (
@@ -238,8 +250,6 @@ export function RegisterPage() {
 }
 
 export function RegistrationStatusPage() {
-  const { login } = useAuth()
-  const navigate = useNavigate()
   const [params] = useSearchParams()
 
   const type =
@@ -248,12 +258,6 @@ export function RegistrationStatusPage() {
       : "candidate"
 
   const email = params.get("email") || ""
-
-  function verifyEmail() {
-    verifyCandidate(email)
-    login(email, "candidate")
-    navigate("/candidate")
-  }
 
   return (
     <AuthFrame>
@@ -285,10 +289,10 @@ export function RegistrationStatusPage() {
         </p>
 
         {type === "candidate" ? (
-          <Button onClick={verifyEmail}>
-            <CheckCircle2 size={17} />
-            Simulate email verification
-          </Button>
+          <Link className="button button-secondary" to="/login">
+            <MailCheck size={17} />
+            Return to sign in after verification
+          </Link>
         ) : (
           <Link
             className="button button-secondary"
@@ -299,10 +303,43 @@ export function RegistrationStatusPage() {
         )}
 
         <p className="auth-disclosure">
-          Email delivery and account approval require
-          authentication backend endpoints. This preview
-          stores status changes in this browser.
+          Candidates can sign in only after opening the verification link in
+          their email.
         </p>
+      </Card>
+    </AuthFrame>
+  )
+}
+
+export function VerifyEmailPage() {
+  const [params] = useSearchParams()
+  const [message, setMessage] = useState("Verifying your email...")
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    const token = params.get("token")
+    if (!token) {
+      setError("This verification link is missing its token.")
+      return
+    }
+    void apiRequest<{ message: string }>(
+      `/api/auth/verify-email?token=${encodeURIComponent(token)}`,
+    )
+      .then((result) => setMessage(result.message))
+      .catch((requestError) =>
+        setError(requestError instanceof Error ? requestError.message : "Unable to verify email."),
+      )
+  }, [params])
+
+  return (
+    <AuthFrame>
+      <Card className="registration-status">
+        <div className="registration-status-icon"><MailCheck size={25} /></div>
+        <p className="eyebrow">{error ? "Verification failed" : "Email verification"}</p>
+        <h2>{error || message}</h2>
+        <Link className="button button-secondary" to="/login">
+          Continue to sign in
+        </Link>
       </Card>
     </AuthFrame>
   )

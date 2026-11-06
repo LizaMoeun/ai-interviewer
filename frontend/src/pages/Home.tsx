@@ -116,6 +116,19 @@ export default function HomePage() {
 
       <section className="content-section">
         <div className="center-heading">
+          <p className="eyebrow">For candidates and curious learners</p>
+          <h2>Practice on your own, whenever you want.</h2>
+          <p>Generate a personalized question set, answer it like a quiz, get AI feedback, and run coding exercises without joining a live interview.</p>
+        </div>
+        <div className="benefit-grid">
+          <Card><div className="feature-icon"><Sparkles size={21} /></div><h3>Generate questions</h3><p>Choose your role, technologies, level, and difficulty.</p></Card>
+          <Card><div className="feature-icon"><ClipboardCheck size={21} /></div><h3>Practice as a quiz</h3><p>Work through questions one at a time and see feedback on your answers.</p></Card>
+          <Card><div className="feature-icon"><BarChart3 size={21} /></div><h3>Run code safely</h3><p>Test coding answers in a sandbox before your real interview.</p></Card>
+        </div>
+      </section>
+
+      <section className="content-section">
+        <div className="center-heading">
           <p className="eyebrow">A more reliable process</p>
           <h2>
             Spend less time coordinating. Learn more from every interview.

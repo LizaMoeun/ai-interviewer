@@ -7,6 +7,7 @@ const {
     generateFeedback: generateFeedbackService,
     generateFinalReport: generateFinalReportService,
 } = require("../services/aiService");
+const { toCandidateReport } = require("../utils/reportAccess");
 
 const generateQuestions = async (req, res) => {
     try {
@@ -99,10 +100,11 @@ const generateFeedback = async (req, res) => {
 const generateFinalReport = async (req, res) => {
     try {
         const result = await generateFinalReportService(req.body);
+        const data = req.user.role === "candidate" ? toCandidateReport(result) : result;
 
         res.json({
             success: true,
-            data: result,
+            data,
         });
     } catch (err) {
         res.status(500).json({

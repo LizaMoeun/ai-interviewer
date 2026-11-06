@@ -1,133 +1,95 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react"
+import { apiPost, getApiToken, setApiToken } from "../lib/api"
 
 export type Role = "candidate" | "recruiter" | "admin"
-export type User = { name: string; email: string; role: Role }
+export type User = { id: string; name: string; email: string; role: Role }
 export type Registration = User & {
-  status: 
-  | "Pending email verification" 
-  | "Pending admin approval" 
-  | "Active"
-  | "Rejected"
+  status: "Pending email verification" | "Pending admin approval" | "Active" | "Rejected"
 }
+
+export function getRegistrations(): Registration[] {
+  return []
+}
+
+export function approveRecruiter(_email: string) {}
+
+export function rejectRecruiter(_email: string) {}
 
 type AuthValue = {
   user: User | null
-  login: (email: string, role: Role) => User
+  ready: boolean
+  login: (email: string, password: string) => Promise<User>
   register: (
     name: string,
     email: string,
+    password: string,
     role: Exclude<Role, "admin">,
-  ) => Registration
+  ) => Promise<Registration>
   logout: () => void
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
-const USER_KEY = "interviewai.user"
-const REGISTRATIONS_KEY = "interviewai.registrations"
-
-export function getRegistrations(): Registration[] {
-  try {
-    const registrations = JSON.parse(
-      localStorage.getItem(REGISTRATIONS_KEY) || "[]",
-    )
-    return Array.isArray(registrations) ? registrations : []
-  } catch {
-    return []
-  }
-}
-
-function updateRegistration(email: string, status: Registration["status"]) {
-  const registrations = getRegistrations().map((registration) =>
-    registration.email === email ? { ...registration, status } : registration,
-  )
-  localStorage.setItem(REGISTRATIONS_KEY, JSON.stringify(registrations))
-}
-
-export function approveRecruiter(email: string) {
-  updateRegistration(email, "Active")
-}
-
-export function rejectRecruiter(email: string) {
-  updateRegistration(email, "Rejected")
-}
-
-export function verifyCandidate(email: string) {
-  updateRegistration(email, "Active")
-}
-
-function readUser(): User | null {
-  try {
-    return JSON.parse(localStorage.getItem(USER_KEY) || "null")
-  } catch {
-    return null
-  }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(readUser)
+  const [user, setUser] = useState<User | null>(null)
+  const [ready, setReady] = useState(!getApiToken())
+
+  useEffect(() => {
+    const token = getApiToken()
+    if (!token) return
+    const apiBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "")
+    fetch(`${apiBase}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (response) => {
+        const payload = await response.json()
+        if (!response.ok || !payload.success) throw new Error(payload.error)
+        setUser(payload.data)
+      })
+      .catch(() => {
+        setApiToken(null)
+        setUser(null)
+      })
+      .finally(() => setReady(true))
+  }, [])
 
   const value = useMemo<AuthValue>(
     () => ({
       user,
-      login(email, role) {
-        const registration = getRegistrations().find(
-          (item) => item.email.toLowerCase() === email.toLowerCase(),
-        )
-        if (registration && registration.status !== "Active") {
-          throw new Error(
-            registration.status === "Pending admin approval"
-              ? "Your recruiter account is waiting for administrator approval."
-              : "Verify your email address before signing in.",
-          )
-        }
-        const next = {
+      ready,
+      async login(email, password) {
+        const result = await apiPost<{ token: string; user: User }>("/api/auth/login", {
           email,
-          role,
-          name:
-            registration?.name ||
-            email
-              .split("@")[0]
-              .split(/[._-]/)
-              .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-              .join(" ") ||
-            "User",
-        }
-        localStorage.setItem(USER_KEY, JSON.stringify(next))
-        setUser(next)
-        return next
+          password,
+        })
+        setApiToken(result.token)
+        setUser(result.user)
+        return result.user
       },
-      register(name, email, role) {
-        const next: Registration = {
-          name,
-          email,
-          role,
-          status:
-            role === "recruiter"
-              ? "Pending admin approval"
-              : "Pending email verification",
+      async register(name, email, password, role) {
+        const result = await apiPost<{ token?: string; user: User; status: Registration["status"] }>(
+          "/api/auth/register",
+          { name, email, password, role },
+        )
+        if (result.token) {
+          setApiToken(result.token)
+          setUser(result.user)
         }
-        const registrations = [
-          next,
-          ...getRegistrations().filter(
-            (registration) =>
-              registration.email.toLowerCase() !== email.toLowerCase(),
-          ),
-        ]
-        localStorage.setItem(REGISTRATIONS_KEY, JSON.stringify(registrations))
-        return next
+        return { ...result.user, status: result.status }
       },
       logout() {
-        localStorage.removeItem(USER_KEY)
+        setApiToken(null)
         setUser(null)
       },
     }),
-    [user],
+    [ready, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

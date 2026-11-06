@@ -132,6 +132,7 @@ export function CandidateLayout() {
         <nav className="candidate-nav">
           <NavLink to="/candidate">Interviews</NavLink>
           <NavLink to="/candidate/results">My results</NavLink>
+          <NavLink to="/candidate/practice">Practice lab</NavLink>
         </nav>
         <div className="header-user">
           <div className="avatar">{(user?.name || "C").charAt(0)}</div>
