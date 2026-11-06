@@ -122,31 +122,6 @@ async function updateUserStatus(req, res) {
     if (!allowedStatuses.includes(req.body.status)) {
         return res.status(400).json({ success: false, error: "Invalid user status." });
     }
-
-    async function deleteUser(req, res) {
-        if (req.params.id === req.user._id.toString()) {
-            return res.status(400).json({ success: false, error: "You cannot delete your own account." });
-        }
-
-        const user = await User.findById(req.params.id).select("_id role");
-        if (!user) {
-            return res.status(404).json({ success: false, error: "User not found." });
-        }
-        if (user.role === "admin") {
-            return res.status(403).json({ success: false, error: "Administrator accounts cannot be deleted here." });
-        }
-
-        if (user.role === "recruiter") {
-            await Interview.deleteMany({ recruiterId: user._id });
-        } else {
-            await Interview.updateMany(
-                { candidateId: user._id },
-                { $set: { candidateId: null } },
-            );
-        }
-        await User.deleteOne({ _id: user._id });
-        return res.json({ success: true, data: { id: user._id.toString() } });
-    }
     if (req.params.id === req.user._id.toString()) {
         return res.status(400).json({ success: false, error: "You cannot change your own account status." });
     }
@@ -160,6 +135,31 @@ async function updateUserStatus(req, res) {
         return res.status(404).json({ success: false, error: "User not found." });
     }
     return res.json({ success: true, data: publicUser(user) });
+}
+
+async function deleteUser(req, res) {
+    if (req.params.id === req.user._id.toString()) {
+        return res.status(400).json({ success: false, error: "You cannot delete your own account." });
+    }
+
+    const user = await User.findById(req.params.id).select("_id role");
+    if (!user) {
+        return res.status(404).json({ success: false, error: "User not found." });
+    }
+    if (user.role === "admin") {
+        return res.status(403).json({ success: false, error: "Administrator accounts cannot be deleted here." });
+    }
+
+    if (user.role === "recruiter") {
+        await Interview.deleteMany({ recruiterId: user._id });
+    } else {
+        await Interview.updateMany(
+            { candidateId: user._id },
+            { $set: { candidateId: null } },
+        );
+    }
+    await User.deleteOne({ _id: user._id });
+    return res.json({ success: true, data: { id: user._id.toString() } });
 }
 
 module.exports = {
